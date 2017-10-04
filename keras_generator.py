@@ -1,10 +1,3 @@
-
-# coding: utf-8
-
-# This notebook contains a generator class for Keras called `BSONIterator` that can read directly from the BSON data. You can use it in combination with `ImageDataGenerator` for doing data augmentation.
-
-
-
 import os, sys, math, io
 import numpy as np
 import pandas as pd
@@ -12,7 +5,7 @@ import multiprocessing as mp
 import bson
 import struct
 
-
+from tensorflow.python.lib.io import file_io
 import keras
 from keras.preprocessing.image import load_img, img_to_array
 import tensorflow as tf
@@ -207,6 +200,23 @@ class BSONIterator(Iterator):
             index_array = next(self.index_generator)
         return self._get_batches_of_transformed_samples(index_array)
 
+def build_model():
+    model = Sequential()
+    model.add(Conv2D(32, 3, padding="same", activation="relu", input_shape=(90, 90, 3)))
+    model.add(MaxPooling2D())
+    model.add(Conv2D(64, 3, padding="same", activation="relu"))
+    model.add(MaxPooling2D())
+    model.add(Conv2D(128, 3, padding="same", activation="relu"))
+    model.add(MaxPooling2D())
+    model.add(GlobalAveragePooling2D())
+    model.add(Dense(num_classes, activation="softmax"))
+
+    model.compile(optimizer="adam",
+                  loss="categorical_crossentropy",
+                  metrics=["accuracy"])
+
+    model.summary()
+    return model
 
 # VARS
 data_dir = "./input/"
@@ -232,9 +242,6 @@ train_offsets_df = read_bson(train_bson_path, num_records=num_train_products, wi
 train_offsets_df.to_csv("train_offsets.csv")
 test_offsets_df = read_bson(test_bson_path, num_records=num_test_products, with_categories=False)
 test_offsets_df.to_csv("test_offsets.csv")
-# Create a 80/20 split. Also drop 90% of all products to make the dataset more manageable. (Note: if `drop_percentage` > 0, the progress bar doesn't go all the way.)
-
-
 
 train_images_df, val_images_df = make_val_set(train_offsets_df, split_percentage=0.2, 
                                               drop_percentage=0.9)
@@ -286,32 +293,7 @@ cat_idx = np.argmax(by[-1])
 cat_id = idx2cat[cat_idx]
 categories_df.loc[cat_id]
 
-
-# # Part 3: Training
-# 
-# Create a very simple Keras model and train it, to test that the generators work.
-
-
-
-
-model = Sequential()
-model.add(Conv2D(32, 3, padding="same", activation="relu", input_shape=(90, 90, 3)))
-model.add(MaxPooling2D())
-model.add(Conv2D(64, 3, padding="same", activation="relu"))
-model.add(MaxPooling2D())
-model.add(Conv2D(128, 3, padding="same", activation="relu"))
-model.add(MaxPooling2D())
-model.add(GlobalAveragePooling2D())
-model.add(Dense(num_classes, activation="softmax"))
-
-model.compile(optimizer="adam",
-              loss="categorical_crossentropy",
-              metrics=["accuracy"])
-
-model.summary()
-
-
-
+model = build_model()
 
 # To train the model:
 model.fit_generator(train_gen,
@@ -320,9 +302,6 @@ model.fit_generator(train_gen,
                     validation_data = val_gen,
                     validation_steps = num_val_images // batch_size,
                     workers = 8)
-
-
-
 
 # To evaluate on the validation set:
 model.evaluate_generator(val_gen, steps=num_val_images // batch_size, workers=8)
@@ -335,9 +314,6 @@ model.evaluate_generator(val_gen, steps=num_val_images // batch_size, workers=8)
 
 
 test_bson_file = open(test_bson_path, "rb")
-
-
-
 
 test_datagen = ImageDataGenerator()
 test_gen = BSONIterator(test_bson_file, test_images_df, test_offsets_df,
