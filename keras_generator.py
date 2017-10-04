@@ -3,7 +3,6 @@
 
 # This notebook contains a generator class for Keras called `BSONIterator` that can read directly from the BSON data. You can use it in combination with `ImageDataGenerator` for doing data augmentation.
 
-# In[1]:
 
 
 import os, sys, math, io
@@ -21,63 +20,16 @@ import tensorflow as tf
 from collections import defaultdict
 from tqdm import *
 
-# Input data files are available in the "../input/" directory.
-# For example, running this (by clicking run or pressing Shift+Enter) will list the files in the input directory
+from keras.preprocessing.image import Iterator
+from keras.preprocessing.image import ImageDataGenerator
+from keras import backend as K
 
-from subprocess import check_output
-print(check_output(["ls", "./input"]).decode("utf8"))
+from keras.models import Sequential
+from keras.layers import Dropout, Flatten, Dense
+from keras.layers.convolutional import Conv2D
+from keras.layers.pooling import MaxPooling2D, GlobalAveragePooling2D
 
-# Any results you write to the current directory are saved as output.
-
-
-# In[2]:
-
-
-keras.__version__, tf.__version__
-
-
-# In[3]:
-
-
-data_dir = "./input/"
-
-train_bson_path = os.path.join(data_dir, "train.bson")
-num_train_products = 7069896
-
-# train_bson_path = os.path.join(data_dir, "train_example.bson")
-# num_train_products = 82
-
-test_bson_path = os.path.join(data_dir, "test.bson")
-num_test_products = 1768172
-
-
-# # Part 1: Create lookup tables
-# 
-# The generator uses several lookup tables that describe the layout of the BSON file, which products and images are part of the training/validation sets, and so on.
-# 
-# You only need to generate these tables once, as they get saved to CSV files. If you already have these CSV files, skip to part 2.
-
-# ## Lookup table for categories
-
-# In[4]:
-
-
-categories_path = os.path.join(data_dir, "category_names.csv")
-categories_df = pd.read_csv(categories_path, index_col="category_id")
-
-# Maps the category_id to an integer index. This is what we'll use to
-# one-hot encode the labels.
-categories_df["category_idx"] = pd.Series(range(len(categories_df)), index=categories_df.index)
-
-categories_df.to_csv("categories.csv")
-categories_df.head()
-
-
-# Create dictionaries for quick lookup of `category_id` to `category_idx` mapping.
-
-# In[5]:
-
-
+# FUNCTIONS: 
 def make_category_tables():
     cat2idx = {}
     idx2cat = {}
@@ -88,31 +40,10 @@ def make_category_tables():
         idx2cat[category_idx] = category_id
     return cat2idx, idx2cat
 
-
-# In[6]:
-
-
-cat2idx, idx2cat = make_category_tables()
-
-
-# In[7]:
-
-
-# Test if it works:
-cat2idx[1000012755], idx2cat[4]
-
-
-# ## Read the BSON files
-# 
 # We store the offsets and lengths of all items, allowing us random access to the items later.
 # 
-# Inspired by code from: https://www.kaggle.com/vfdev5/random-item-access
 # 
 # Note: this takes a few minutes to execute, but we only have to do it once (we'll save the table to a CSV file afterwards).
-
-# In[8]:
-
-
 def read_bson(bson_path, num_records, with_categories):
     rows = {}
     with open(bson_path, "rb") as f, tqdm(total=num_records) as pbar:
@@ -151,75 +82,11 @@ def read_bson(bson_path, num_records, with_categories):
     df.sort_index(inplace=True)
     return df
 
-
-# In[9]:
-
-
-train_offsets_df = read_bson(train_bson_path, num_records=num_train_products, with_categories=True)
-
-
-# In[10]:
-
-
-train_offsets_df.head()
-
-
-# In[11]:
-
-
-train_offsets_df.to_csv("train_offsets.csv")
-
-
-# In[12]:
-
-
-# How many products?
-len(train_offsets_df)
-
-
-# In[13]:
-
-
-# How many categories?
-len(train_offsets_df["category_id"].unique())
-
-
-# In[14]:
-
-
-# How many images in total?
-train_offsets_df["num_imgs"].sum()
-
-
-# Also create a table for the offsets from the test set.
-
-# In[15]:
-
-
-test_offsets_df = read_bson(test_bson_path, num_records=num_test_products, with_categories=False)
-
-
-# In[16]:
-
-
-test_offsets_df.head()
-
-
-# In[17]:
-
-
-test_offsets_df.to_csv("test_offsets.csv")
-
-
 # ## Create a random train/validation split
 # 
 # We split on products, not on individual images. Since some of the categories only have a few products, we do the split separately for each category.
 # 
 # This creates two new tables, one for the training images and one for the validation images. There is a row for every single image, so if a product has more than one image it occurs more than once in the table.
-
-# In[18]:
-
-
 def make_val_set(df, split_percentage=0.2, drop_percentage=0.):
     # Find the product_ids for each category.
     category_dict = defaultdict(list)
@@ -259,73 +126,9 @@ def make_val_set(df, split_percentage=0.2, drop_percentage=0.):
     val_df = pd.DataFrame(val_list, columns=columns)   
     return train_df, val_df
 
-
-# Create a 80/20 split. Also drop 90% of all products to make the dataset more manageable. (Note: if `drop_percentage` > 0, the progress bar doesn't go all the way.)
-
-# In[19]:
-
-
-train_images_df, val_images_df = make_val_set(train_offsets_df, split_percentage=0.2, 
-                                              drop_percentage=0.99)
-
-
-# In[20]:
-
-
-train_images_df.head()
-
-
-# In[21]:
-
-
-val_images_df.head()
-
-
-# In[22]:
-
-
-print("Number of training images:", len(train_images_df))
-print("Number of validation images:", len(val_images_df))
-print("Total images:", len(train_images_df) + len(val_images_df))
-
-
-# Are all categories represented in the train/val split? (Note: if the drop percentage is high, then very small categories won't have enough products left to make it into the validation set.)
-
-# In[23]:
-
-
-len(train_images_df["category_idx"].unique()), len(val_images_df["category_idx"].unique())
-
-
-# Quickly verify that the split really is approximately 80-20:
-
-# In[24]:
-
-
-category_idx = 619
-num_train = np.sum(train_images_df["category_idx"] == category_idx)
-num_val = np.sum(val_images_df["category_idx"] == category_idx)
-num_val / num_train
-
-
-# Close enough. ;-) Remember that we split on products but not all products have the same number of images, which is where the slightly discrepancy comes from. (Also, there tend to be fewer validation images if `drop_percentage` > 0.)
-
-# Save the lookup tables as CSV so that we don't need to repeat the above procedure again.
-
-# In[25]:
-
-
-train_images_df.to_csv("train_images.csv")
-val_images_df.to_csv("val_images.csv")
-
-
 # ## Lookup table for test set images
 # 
 # Create a list containing a row for each image. If a product has more than one image, it appears more than once in this list.
-
-# In[26]:
-
-
 def make_test_set(df):
     test_list = []
     for ir in tqdm(df.itertuples()):
@@ -338,62 +141,11 @@ def make_test_set(df):
     test_df = pd.DataFrame(test_list, columns=columns)
     return test_df
 
-
-# In[27]:
-
-
-test_images_df = make_test_set(test_offsets_df)
-
-
-# In[28]:
-
-
-test_images_df.head()
-
-
-# In[29]:
-
-
-print("Number of test images:", len(test_images_df))
-
-
-# In[30]:
-
-
-test_images_df.to_csv("test_images.csv")
-
-
-# # Part 2: The generator
-
-# First load the lookup tables from the CSV files (you don't need to do this if you just did all the steps from part 1).
-
-# In[31]:
-
-
-categories_df = pd.read_csv("categories.csv", index_col=0)
-cat2idx, idx2cat = make_category_tables()
-
-train_offsets_df = pd.read_csv("train_offsets.csv", index_col=0)
-train_images_df = pd.read_csv("train_images.csv", index_col=0)
-val_images_df = pd.read_csv("val_images.csv", index_col=0)
-
-test_offsets_df = pd.read_csv("test_offsets.csv", index_col=0)
-test_images_df = pd.read_csv("test_images.csv", index_col=0)
-
-
 # The Keras generator is implemented by the `BSONIterator` class. It creates batches of images (and their one-hot encoded labels) directly from the BSON file. It can be used with multiple workers.
 # 
 # **Note:** For fastest results, put the train.bson and test.bson files on a fast drive (SSD).
 # 
 # See also the code in: https://github.com/fchollet/keras/blob/master/keras/preprocessing/image.py
-
-# In[32]:
-
-
-from keras.preprocessing.image import Iterator
-from keras.preprocessing.image import ImageDataGenerator
-from keras import backend as K
-
 class BSONIterator(Iterator):
     def __init__(self, bson_file, images_df, offsets_df, num_class,
                  image_data_generator, target_size=(180, 180), with_labels=True,
@@ -456,17 +208,53 @@ class BSONIterator(Iterator):
         return self._get_batches_of_transformed_samples(index_array)
 
 
-# In[33]:
+# VARS
+data_dir = "./input/"
+
+train_bson_path = os.path.join(data_dir, "train.bson")
+num_train_products = 7069896
 
 
+test_bson_path = os.path.join(data_dir, "test.bson")
+num_test_products = 1768172
+
+
+categories_path = os.path.join(data_dir, "category_names.csv")
+categories_df = pd.read_csv(categories_path, index_col="category_id")
+
+# Maps the category_id to an integer index. This is what we'll use to
+# one-hot encode the labels.
+categories_df["category_idx"] = pd.Series(range(len(categories_df)), index=categories_df.index)
+
+categories_df.to_csv("categories.csv")
+cat2idx, idx2cat = make_category_tables()
+train_offsets_df = read_bson(train_bson_path, num_records=num_train_products, with_categories=True)
+train_offsets_df.to_csv("train_offsets.csv")
+test_offsets_df = read_bson(test_bson_path, num_records=num_test_products, with_categories=False)
+test_offsets_df.to_csv("test_offsets.csv")
+# Create a 80/20 split. Also drop 90% of all products to make the dataset more manageable. (Note: if `drop_percentage` > 0, the progress bar doesn't go all the way.)
+
+
+
+train_images_df, val_images_df = make_val_set(train_offsets_df, split_percentage=0.2, 
+                                              drop_percentage=0.9)
+
+print("Number of training images:", len(train_images_df))
+print("Number of validation images:", len(val_images_df))
+print("Total images:", len(train_images_df) + len(val_images_df))
+
+train_images_df.to_csv("train_images.csv")
+val_images_df.to_csv("val_images.csv")
+
+
+test_images_df = make_test_set(test_offsets_df)
+
+
+print("Number of test images:", len(test_images_df))
+test_images_df.to_csv("test_images.csv")
 train_bson_file = open(train_bson_path, "rb")
 
-
 # Create a generator for training and a generator for validation.
-
-# In[56]:
-
-
 num_classes = 5270
 num_train_images = len(train_images_df)
 num_val_images = len(val_images_df)
@@ -484,43 +272,15 @@ val_gen = BSONIterator(train_bson_file, val_images_df, train_offsets_df,
 
 
 # How fast is the generator? Create a single batch:
-
-# In[57]:
-
-
 next(train_gen)  # warm-up
 
 bx, by = next(train_gen)
-
-
-# Does it really output images and one-hot encoded class labels? Note that the images are pre-processed (and augmented) and therefore may look weird.
-
-# In[58]:
-
-
-
-
-# In[59]:
-
 
 cat_idx = np.argmax(by[-1])
 cat_id = idx2cat[cat_idx]
 categories_df.loc[cat_id]
 
-
-# In[60]:
-
-
 bx, by = next(val_gen)
-
-
-# In[61]:
-
-
-
-
-# In[62]:
-
 
 cat_idx = np.argmax(by[-1])
 cat_id = idx2cat[cat_idx]
@@ -531,13 +291,8 @@ categories_df.loc[cat_id]
 # 
 # Create a very simple Keras model and train it, to test that the generators work.
 
-# In[63]:
 
 
-from keras.models import Sequential
-from keras.layers import Dropout, Flatten, Dense
-from keras.layers.convolutional import Conv2D
-from keras.layers.pooling import MaxPooling2D, GlobalAveragePooling2D
 
 model = Sequential()
 model.add(Conv2D(32, 3, padding="same", activation="relu", input_shape=(90, 90, 3)))
@@ -556,7 +311,6 @@ model.compile(optimizer="adam",
 model.summary()
 
 
-# In[ ]:
 
 
 # To train the model:
@@ -568,7 +322,6 @@ model.fit_generator(train_gen,
                     workers = 8)
 
 
-# In[ ]:
 
 
 # To evaluate on the validation set:
@@ -579,13 +332,11 @@ model.evaluate_generator(val_gen, steps=num_val_images // batch_size, workers=8)
 # 
 # Use `BSONIterator` to load the test set images in batches.
 
-# In[ ]:
 
 
 test_bson_file = open(test_bson_path, "rb")
 
 
-# In[ ]:
 
 
 test_datagen = ImageDataGenerator()
@@ -600,7 +351,6 @@ test_gen = BSONIterator(test_bson_file, test_images_df, test_offsets_df,
 # 
 # Use `idx2cat[]` to convert the predicted category index back to the original class label.
 
-# In[ ]:
 
 
 num_test_samples = len(test_images_df)
