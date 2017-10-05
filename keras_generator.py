@@ -203,7 +203,7 @@ class BSONIterator(Iterator):
 
 def build_model():
     model = Sequential()
-    model.add(Conv2D(32, 3, padding="same", activation="relu", input_shape=(90, 90, 3)))
+    model.add(Conv2D(32, 3, padding="same", activation="relu", input_shape=target_size + (3,)))
     model.add(MaxPooling2D())
     model.add(Conv2D(64, 3, padding="same", activation="relu"))
     model.add(MaxPooling2D())
@@ -219,6 +219,13 @@ def build_model():
     model.summary()
     return model
 
+def img_size(s):
+    try:
+        x, y = map(int, s.split(','))
+        return x,y
+    except:
+        raise TypeError
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # input arguments
@@ -230,6 +237,13 @@ if __name__ == '__main__':
     parser.add_argument(
         '--batch-size',
         help='Training batch sizes',
+        required=True
+    )
+    parser.add_argument(
+        '--image-size',
+        type=img_size,
+        nargs=2,
+        help='Image size as x,y that you want to downsample to'
         required=True
     )
 
@@ -281,7 +295,7 @@ if __name__ == '__main__':
     num_train_images = len(train_images_df)
     num_val_images = len(val_images_df)
     batch_size = args.batch_size
-    target_size = (90, 90)
+    target_size = args.image_size
 
     # Tip: use ImageDataGenerator for data augmentation and preprocessing.
     train_datagen = ImageDataGenerator()
