@@ -218,116 +218,125 @@ def build_model():
     model.summary()
     return model
 
-# VARS
-data_dir = "./input/"
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    # input arguments
+    parser.add_argument(
+        '--train-file-dir',
+        help='path to train.bson',
+        nargs='+',
+        required=True
+    )
+    args = parser.parse_args()
+    data_dir = args.train_file_dir
 
-train_bson_path = os.path.join(data_dir, "train.bson")
-num_train_products = 7069896
-
-
-test_bson_path = os.path.join(data_dir, "test.bson")
-num_test_products = 1768172
-
-
-categories_path = os.path.join(data_dir, "category_names.csv")
-categories_df = pd.read_csv(categories_path, index_col="category_id")
-
-# Maps the category_id to an integer index. This is what we'll use to
-# one-hot encode the labels.
-categories_df["category_idx"] = pd.Series(range(len(categories_df)), index=categories_df.index)
-
-categories_df.to_csv("categories.csv")
-cat2idx, idx2cat = make_category_tables()
-train_offsets_df = read_bson(train_bson_path, num_records=num_train_products, with_categories=True)
-train_offsets_df.to_csv("train_offsets.csv")
-test_offsets_df = read_bson(test_bson_path, num_records=num_test_products, with_categories=False)
-test_offsets_df.to_csv("test_offsets.csv")
-
-train_images_df, val_images_df = make_val_set(train_offsets_df, split_percentage=0.2, 
-                                              drop_percentage=0.9)
-
-print("Number of training images:", len(train_images_df))
-print("Number of validation images:", len(val_images_df))
-print("Total images:", len(train_images_df) + len(val_images_df))
-
-train_images_df.to_csv("train_images.csv")
-val_images_df.to_csv("val_images.csv")
+    train_bson_path = os.path.join(data_dir, "train.bson")
+    num_train_products = 7069896
 
 
-test_images_df = make_test_set(test_offsets_df)
+    test_bson_path = os.path.join(data_dir, "test.bson")
+    num_test_products = 1768172
 
 
-print("Number of test images:", len(test_images_df))
-test_images_df.to_csv("test_images.csv")
-train_bson_file = open(train_bson_path, "rb")
+    categories_path = os.path.join(data_dir, "category_names.csv")
+    categories_df = pd.read_csv(categories_path, index_col="category_id")
 
-# Create a generator for training and a generator for validation.
-num_classes = 5270
-num_train_images = len(train_images_df)
-num_val_images = len(val_images_df)
-batch_size = 300
-target_size = (90, 90)
+    # Maps the category_id to an integer index. This is what we'll use to
+    # one-hot encode the labels.
+    categories_df["category_idx"] = pd.Series(range(len(categories_df)), index=categories_df.index)
 
-# Tip: use ImageDataGenerator for data augmentation and preprocessing.
-train_datagen = ImageDataGenerator()
-train_gen = BSONIterator(train_bson_file, train_images_df, train_offsets_df,
-                         num_classes, train_datagen, target_size=target_size, batch_size=batch_size, shuffle=True)
+    categories_df.to_csv("categories.csv")
+    cat2idx, idx2cat = make_category_tables()
+    train_offsets_df = read_bson(train_bson_path, num_records=num_train_products, with_categories=True)
+    train_offsets_df.to_csv("train_offsets.csv")
+    test_offsets_df = read_bson(test_bson_path, num_records=num_test_products, with_categories=False)
+    test_offsets_df.to_csv("test_offsets.csv")
 
-val_datagen = ImageDataGenerator()
-val_gen = BSONIterator(train_bson_file, val_images_df, train_offsets_df,
-                       num_classes, val_datagen, batch_size=batch_size)
+    train_images_df, val_images_df = make_val_set(train_offsets_df, split_percentage=0.2, 
+                                                  drop_percentage=0.9)
 
+    print("Number of training images:", len(train_images_df))
+    print("Number of validation images:", len(val_images_df))
+    print("Total images:", len(train_images_df) + len(val_images_df))
 
-# How fast is the generator? Create a single batch:
-next(train_gen)  # warm-up
-
-bx, by = next(train_gen)
-
-cat_idx = np.argmax(by[-1])
-cat_id = idx2cat[cat_idx]
-categories_df.loc[cat_id]
-
-bx, by = next(val_gen)
-
-cat_idx = np.argmax(by[-1])
-cat_id = idx2cat[cat_idx]
-categories_df.loc[cat_id]
-
-model = build_model()
-
-# To train the model:
-model.fit_generator(train_gen,
-                    steps_per_epoch = num_train_images // batch_size,
-                    epochs = 1,
-                    validation_data = val_gen,
-                    validation_steps = num_val_images // batch_size,
-                    workers = 8)
-
-# To evaluate on the validation set:
-model.evaluate_generator(val_gen, steps=num_val_images // batch_size, workers=8)
+    train_images_df.to_csv("train_images.csv")
+    val_images_df.to_csv("val_images.csv")
 
 
-# # Part 4: Test set predictions
-# 
-# Use `BSONIterator` to load the test set images in batches.
+    test_images_df = make_test_set(test_offsets_df)
 
 
+    print("Number of test images:", len(test_images_df))
+    test_images_df.to_csv("test_images.csv")
+    train_bson_file = open(train_bson_path, "rb")
 
-test_bson_file = open(test_bson_path, "rb")
+    # Create a generator for training and a generator for validation.
+    num_classes = 5270
+    num_train_images = len(train_images_df)
+    num_val_images = len(val_images_df)
+    batch_size = 300
+    target_size = (90, 90)
 
-test_datagen = ImageDataGenerator()
-test_gen = BSONIterator(test_bson_file, test_images_df, test_offsets_df,
-                        num_classes, test_datagen, batch_size=batch_size, 
-                        with_labels=False, shuffle=False)
+    # Tip: use ImageDataGenerator for data augmentation and preprocessing.
+    train_datagen = ImageDataGenerator()
+    train_gen = BSONIterator(train_bson_file, train_images_df, train_offsets_df,
+                             num_classes, train_datagen, target_size=target_size, batch_size=batch_size, shuffle=True)
+
+    val_datagen = ImageDataGenerator()
+    val_gen = BSONIterator(train_bson_file, val_images_df, train_offsets_df,
+                           num_classes, val_datagen, batch_size=batch_size)
 
 
-# Running `model.predict_generator()` gives a list of 3095080 predictions, one for each image. 
-# 
-# The indices of the predictions correspond to the indices in `test_images_df`. After making the predictions, you probably want to average the predictions for products that have multiple images.
-# 
-# Use `idx2cat[]` to convert the predicted category index back to the original class label.
+    # How fast is the generator? Create a single batch:
+    next(train_gen)  # warm-up
+
+    bx, by = next(train_gen)
+
+    cat_idx = np.argmax(by[-1])
+    cat_id = idx2cat[cat_idx]
+    categories_df.loc[cat_id]
+
+    bx, by = next(val_gen)
+
+    cat_idx = np.argmax(by[-1])
+    cat_id = idx2cat[cat_idx]
+    categories_df.loc[cat_id]
+
+    model = build_model()
+
+    # To train the model:
+    model.fit_generator(train_gen,
+                        steps_per_epoch = num_train_images // batch_size,
+                        epochs = 1,
+                        validation_data = val_gen,
+                        validation_steps = num_val_images // batch_size,
+                        workers = 8)
+
+    # To evaluate on the validation set:
+    model.evaluate_generator(val_gen, steps=num_val_images // batch_size, workers=8)
+
+
+    # # Part 4: Test set predictions
+    # 
+    # Use `BSONIterator` to load the test set images in batches.
 
 
 
-num_test_samples = len(test_images_df)
-predictions = model.predict_generator(test_gen, steps=num_test_samples // batch_size, workers=8)
+    test_bson_file = open(test_bson_path, "rb")
+
+    test_datagen = ImageDataGenerator()
+    test_gen = BSONIterator(test_bson_file, test_images_df, test_offsets_df,
+                            num_classes, test_datagen, batch_size=batch_size, 
+                            with_labels=False, shuffle=False)
+
+
+    # Running `model.predict_generator()` gives a list of 3095080 predictions, one for each image. 
+    # 
+    # The indices of the predictions correspond to the indices in `test_images_df`. After making the predictions, you probably want to average the predictions for products that have multiple images.
+    # 
+    # Use `idx2cat[]` to convert the predicted category index back to the original class label.
+
+
+
+    num_test_samples = len(test_images_df)
+    predictions = model.predict_generator(test_gen, steps=num_test_samples // batch_size, workers=8)
