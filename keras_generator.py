@@ -225,7 +225,6 @@ if __name__ == '__main__':
     parser.add_argument(
         '--train-file-dir',
         help='path to train.bson',
-        nargs='+',
         required=True
     )
     args = parser.parse_args()
