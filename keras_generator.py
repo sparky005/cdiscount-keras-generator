@@ -227,6 +227,12 @@ if __name__ == '__main__':
         help='path to train.bson',
         required=True
     )
+    parser.add_argument(
+        '--batch-size',
+        help='Training batch sizes',
+        required=True
+    )
+
     args = parser.parse_args()
     data_dir = args.train_file_dir
 
@@ -274,7 +280,7 @@ if __name__ == '__main__':
     num_classes = 5270
     num_train_images = len(train_images_df)
     num_val_images = len(val_images_df)
-    batch_size = 300
+    batch_size = args.batch_size
     target_size = (90, 90)
 
     # Tip: use ImageDataGenerator for data augmentation and preprocessing.
