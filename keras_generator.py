@@ -243,7 +243,7 @@ if __name__ == '__main__':
         '--image-size',
         type=img_size,
         nargs=2,
-        help='Image size as x,y that you want to downsample to'
+        help='Image size as x,y that you want to downsample to',
         required=True
     )
 
