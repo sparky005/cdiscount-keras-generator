@@ -219,12 +219,6 @@ def build_model():
     model.summary()
     return model
 
-def img_size(s):
-    try:
-        x, y = map(int, s.split(','))
-        return x,y
-    except:
-        raise TypeError
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -241,13 +235,14 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--image-size',
-        type=img_size,
-        nargs=2,
+        type=int,
+        nargs="+",
         help='Image size as x,y that you want to downsample to',
         required=True
     )
 
     args = parser.parse_args()
+    args.image_size = tuple(args.image_size)
     data_dir = args.train_file_dir
 
     train_bson_path = os.path.join(data_dir, "train.bson")
