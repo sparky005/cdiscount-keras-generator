@@ -240,6 +240,18 @@ if __name__ == '__main__':
         help='Image size as x,y that you want to downsample to',
         required=True
     )
+    parser.add_argument(
+        '--epochs',
+        type=int,
+        help='Number of training epochs',
+        default=1,
+    )
+    parser.add_argument(
+        '--drops',
+        type=float,
+        help='Drop percentage as float',
+        default=.90,
+    )
 
     args = parser.parse_args()
     args.image_size = tuple(args.image_size)
@@ -268,7 +280,7 @@ if __name__ == '__main__':
     test_offsets_df.to_csv("test_offsets.csv")
 
     train_images_df, val_images_df = make_val_set(train_offsets_df, split_percentage=0.2, 
-                                                  drop_percentage=0.9)
+                                                  drop_percentage=args.drops)
 
     print("Number of training images:", len(train_images_df))
     print("Number of validation images:", len(val_images_df))
@@ -322,7 +334,7 @@ if __name__ == '__main__':
     # To train the model:
     model.fit_generator(train_gen,
                         steps_per_epoch = num_train_images // batch_size,
-                        epochs = 1,
+                        epochs = args.epochs,
                         validation_data = val_gen,
                         validation_steps = num_val_images // batch_size,
                         workers = 8)
