@@ -7,9 +7,8 @@ setup(name='keras_generator',
     author='sparky_005',
     install_requires=[
         'keras',
-        'numpy',
-        'pandas',
         'pymongo',
         'tqdm'
     ],
+    dependency_links=['https://github.com/fchollet/keras/tarball/master'],
     zip_safe=False)
